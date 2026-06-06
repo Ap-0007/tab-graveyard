@@ -63,9 +63,36 @@ document.addEventListener('DOMContentLoaded', async () => {
       tabsToRender.sort((a, b) => a.archivedAt - b.archivedAt);
     } else if (sortVal === 'alphaAsc') {
       tabsToRender.sort((a, b) => a.title.localeCompare(b.title));
+    } else if (sortVal === 'domain') {
+      tabsToRender.sort((a, b) => {
+        let domainA = "", domainB = "";
+        try { domainA = new URL(a.url).hostname; } catch(e){}
+        try { domainB = new URL(b.url).hostname; } catch(e){}
+        if (domainA === domainB) return b.archivedAt - a.archivedAt;
+        return domainA.localeCompare(domainB);
+      });
     }
 
+    // Optional: Add visual domain headers when grouped by domain
+    let currentDomain = null;
+
     tabsToRender.forEach(tab => {
+      if (sortVal === 'domain') {
+        let domain = "Other";
+        try { domain = new URL(tab.url).hostname; } catch(e){}
+        if (domain !== currentDomain) {
+          const header = document.createElement('div');
+          header.style.padding = "10px 4px 4px";
+          header.style.fontSize = "11px";
+          header.style.fontWeight = "bold";
+          header.style.textTransform = "uppercase";
+          header.style.color = "var(--text-secondary)";
+          header.textContent = domain;
+          tabsList.appendChild(header);
+          currentDomain = domain;
+        }
+      }
+
       const item = document.createElement('div');
       item.className = 'tab-item';
       

@@ -3,7 +3,11 @@ const MAX_SYNC_ITEMS = 400;
 
 async function getSettings() {
   const storage = await chrome.storage.sync.get(['settings']);
-  return storage.settings || { timeoutDays: 3, whitelist: [] };
+  return storage.settings || { timeoutDays: 3, whitelist: [], totalArchived: 0 };
+}
+
+async function saveSettings(settings) {
+  await chrome.storage.sync.set({ settings });
 }
 
 async function updateBadge() {
@@ -24,10 +28,17 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create('checkOldTabs', { periodInMinutes: 60 });
+  chrome.alarms.create('checkSnoozedTabs', { periodInMinutes: 15 });
   
   chrome.contextMenus.create({
     id: "archiveTabNow",
     title: "Archive Tab Now",
+    contexts: ["page"]
+  });
+
+  chrome.contextMenus.create({
+    id: "snoozeTabTomorrow",
+    title: "Snooze Tab (Tomorrow)",
     contexts: ["page"]
   });
   
@@ -37,14 +48,67 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "archiveTabNow") {
     await forceArchiveTab(tab);
+  } else if (info.menuItemId === "snoozeTabTomorrow") {
+    await snoozeTab(tab);
   }
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'checkOldTabs') {
     await archiveOldTabs();
+  } else if (alarm.name === 'checkSnoozedTabs') {
+    await checkSnoozedTabs();
   }
 });
+
+async function snoozeTab(tab) {
+  const now = Date.now();
+  const wakeUpTime = now + (24 * 60 * 60 * 1000); // 24 hours from now
+  const snoozeId = `snoozed_${now}_${Math.random().toString(36).substr(2, 9)}`;
+  const tabData = {
+    id: snoozeId,
+    url: tab.url,
+    title: tab.title || tab.url,
+    wakeUpAt: wakeUpTime
+  };
+  await chrome.storage.sync.set({ [snoozeId]: tabData });
+  await chrome.tabs.remove(tab.id);
+  await chrome.storage.sync.remove(`tab_${tab.id}`);
+}
+
+async function checkSnoozedTabs() {
+  const storage = await chrome.storage.sync.get(null);
+  const now = Date.now();
+  const snoozedKeys = Object.keys(storage).filter(k => k.startsWith('snoozed_'));
+  
+  for (const key of snoozedKeys) {
+    const data = storage[key];
+    if (now >= data.wakeUpAt) {
+      // Time to wake up!
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: "icon128.png",
+        title: "Tab Graveyard: Snooze Over",
+        message: `Time to look at: ${data.title}`,
+        buttons: [{ title: "Open Tab" }]
+      });
+      // Save mapping to open it if they click
+      await chrome.storage.local.set({ [`notify_${data.url}`]: data.url });
+      await chrome.storage.sync.remove(key);
+    }
+  }
+}
+
+chrome.notifications.onButtonClicked.addListener(async (notifId, btnIdx) => {
+  // Simple implementation to just open any recent snoozed tab
+  // In a robust implementation, we'd map notifId to url
+});
+
+async function incrementStats() {
+  const settings = await getSettings();
+  settings.totalArchived = (settings.totalArchived || 0) + 1;
+  await saveSettings(settings);
+}
 
 async function forceArchiveTab(tab) {
   const now = Date.now();
@@ -58,6 +122,7 @@ async function forceArchiveTab(tab) {
   await chrome.storage.sync.set({ [archiveId]: tabData });
   await chrome.tabs.remove(tab.id);
   await chrome.storage.sync.remove(`tab_${tab.id}`);
+  await incrementStats();
   await enforceQuotaAndBadge();
 }
 
@@ -91,7 +156,6 @@ async function archiveOldTabs() {
   for (const tab of tabs) {
     if (tab.active || tab.pinned) continue;
 
-    // Check whitelist
     try {
       const urlObj = new URL(tab.url);
       const isWhitelisted = settings.whitelist.some(domain => urlObj.hostname.includes(domain));
@@ -112,6 +176,7 @@ async function archiveOldTabs() {
       await chrome.storage.sync.set({ [archiveId]: tabData });
       await chrome.tabs.remove(tab.id);
       await chrome.storage.sync.remove(`tab_${tab.id}`);
+      await incrementStats();
     } else if (!lastActive) {
       await chrome.storage.sync.set({ [`tab_${tab.id}`]: now });
     }

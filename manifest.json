@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Tab Graveyard",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Auto-archives tabs you haven't touched in 3 days.",
   "permissions": [
     "tabs",
     "storage",
     "alarms",
     "favicon",
-    "contextMenus"
+    "contextMenus",
+    "notifications"
   ],
   "options_page": "options.html",
   "background": {
