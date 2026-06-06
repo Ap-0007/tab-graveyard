@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Graveyard",
+  "version": "1.0.0",
+  "description": "Auto-archives tabs you haven't touched in 3 days.",
+  "permissions": [
+    "tabs",
+    "storage",
+    "alarms",
+    "favicon",
+    "contextMenus"
+  ],
+  "options_page": "options.html",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Open Tab Graveyard"
+  },
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
